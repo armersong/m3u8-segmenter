@@ -393,17 +393,17 @@ int make_segment( struct options_t options,
                 if( (sys_duration >= 0) && ( movie_duration > sys_duration) ) {
                     float d = options.segment_duration;
                     if( options.speed == 1 ) {
-                        if( movie_duration - sys_duration < options.segment_duration ) {
-                            d = (movie_duration - sys_duration) * 0.8;
+                        if( movie_duration > sys_duration ) {
+                            d = (movie_duration - sys_duration) *1.05;
                         } else {
-                            d = options.segment_duration * 1.2;
+                            d = options.segment_duration/100.0;
                         }
                     } else {
                         d = options.segment_duration;
                         if( sys_duration >0 && movie_duration/sys_duration > options.speed )
-                            d *= 1.2;
+                            d = d / options.speed * 1.05;
                         else
-                            d = d / options.speed * 0.5;
+                            d = d / options.speed /100.0;
                     }
                     d *= 1000;
                     if( d > 100 ) { /* 100ms */
