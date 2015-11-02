@@ -385,6 +385,34 @@ int make_segment( struct options_t options,
             avio_flush(oc->pb);
             avio_close(oc->pb);
 
+            if( islive(options) ) {
+                time_t now = time(0);
+                long movie_duration = (long)s_duration;
+                long sys_duration = (long)(now - s_start_time);
+                printf("[%lu] sync: movie duration %lu, sys duration %lu speed %u\n", (long)now, movie_duration, sys_duration, options.speed );
+                if( (sys_duration >= 0) && ( movie_duration > sys_duration) ) {
+                    float d = options.segment_duration;
+                    if( options.speed == 1 ) {
+                        if( movie_duration - sys_duration < options.segment_duration ) {
+                            d = (movie_duration - sys_duration) * 0.8;
+                        } else {
+                            d = options.segment_duration * 1.2;
+                        }
+                    } else {
+                        d = options.segment_duration;
+                        if( sys_duration >0 && movie_duration/sys_duration > options.speed )
+                            d *= 1.2;
+                        else
+                            d = d / options.speed * 0.5;
+                    }
+                    d *= 1000;
+                    if( d > 100 ) { /* 100ms */
+                        printf("sleep %lu ms\n", (long)d );
+                        usleep( (long)d * 1000 );
+                    }
+                }
+            }
+
             if (options.num_segments && (int)(*last_segment - *first_segment) >= options.num_segments - 1) {
                 remove_file = 1;
                 (*first_segment)++;
@@ -405,24 +433,6 @@ int make_segment( struct options_t options,
 
             prev_segment_time = segment_time;
             file_opended = 0;
-
-            if( islive(options) ) {
-                time_t now = time(0);
-                long movie_duration = (long)s_duration;
-                long sys_duration = (long)(now - s_start_time);
-                printf("[%lu] sync: movie duration %lu, sys duration %lu speed %u\n", (long)now, movie_duration, sys_duration, options.speed );
-                if( (sys_duration >= 0) && ( movie_duration > sys_duration) ) {
-                    long d = options.segment_duration * 1000;
-                    if( sys_duration >0 && movie_duration/sys_duration > options.speed )
-                        d *= 120/100;
-                    else
-                        d = d / options.speed * 50 /100;
-                    if( d > 100 ) { /* 100ms */
-                        printf("sleep %lu ms\n", d );
-                        usleep( d * 1000 );
-                    }
-                }
-            }
         }
 
         if( !file_opended ) {
@@ -458,7 +468,7 @@ int make_segment( struct options_t options,
     av_write_trailer(oc);
 
     if (video_st) {
-      avcodec_close(video_st->codec);
+        avcodec_close(video_st->codec);
     }
 
     for(i = 0; i < oc->nb_streams; i++) {
@@ -486,6 +496,7 @@ int make_segment( struct options_t options,
         remove(remove_filename);
         (*output_index)--;
         (*first_segment)--;
+        (*last_segment)--;
     }
     return 0;
 }
