@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <getopt.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <libavformat/avformat.h>
 #include "libav-compat.h"
@@ -37,6 +38,7 @@ struct options_t {
     const char *url_prefix;
     long num_segments;
     long long int base_time;
+    int speed;
 };
 
 
@@ -199,6 +201,7 @@ void display_usage(void)
     printf("\t-u, --url-prefix PREFIX      Prefix for web address of segments, e.g. http://example.org/video/\n");
     printf("\t-n, --num-segment NUMBER     Number of segments to keep on disk\n");
     printf("\t-b, --base-time NUMBER       first seq number base on\n");
+    printf("\t-s, --speed NUMBER           speed: 1, 2, 3, 10\n");
     printf("\t-h, --help                   This help\n");
     printf("\n");
     printf("\n");
@@ -230,6 +233,9 @@ int make_segment( struct options_t options,
     unsigned int i;
     int remove_file;
     int file_opended = 0;
+    /* control speed */
+    static time_t s_start_time = 0;
+    static double s_duration = 0;
 
     av_register_all();
     avformat_network_init();
@@ -365,6 +371,7 @@ int make_segment( struct options_t options,
                     *first_segment = (now - options.base_time) / options.segment_duration + 1;
                     *last_segment = *first_segment - 1;
                     *output_index = *first_segment;
+                    s_start_time = now;
                 }
             }
             if( *first_segment == 0 ) {
@@ -373,6 +380,7 @@ int make_segment( struct options_t options,
         }
 
         if (segment_time - prev_segment_time >= options.segment_duration) {
+            s_duration += (segment_time - prev_segment_time);
             av_write_trailer(oc);   // close ts file and free memory
             avio_flush(oc->pb);
             avio_close(oc->pb);
@@ -397,6 +405,24 @@ int make_segment( struct options_t options,
 
             prev_segment_time = segment_time;
             file_opended = 0;
+
+            if( islive(options) ) {
+                time_t now = time(0);
+                long movie_duration = (long)s_duration;
+                long sys_duration = (long)(now - s_start_time);
+                printf("[%lu] sync: movie duration %lu, sys duration %lu speed %u\n", (long)now, movie_duration, sys_duration, options.speed );
+                if( (sys_duration >= 0) && ( movie_duration > sys_duration) ) {
+                    long d = options.segment_duration * 1000;
+                    if( sys_duration >0 && movie_duration/sys_duration > options.speed )
+                        d *= 120/100;
+                    else
+                        d = d / options.speed * 50 /100;
+                    if( d > 100 ) { /* 100ms */
+                        printf("sleep %lu ms\n", d );
+                        usleep( d * 1000 );
+                    }
+                }
+            }
         }
 
         if( !file_opended ) {
@@ -477,7 +503,7 @@ int main(int argc, char **argv)
     int loop = 0;
     struct options_t options;
 
-    static const char *optstring = "i:d:p:m:u:n:b:ovh?";
+    static const char *optstring = "i:d:p:m:u:n:b:s:ovh?";
 
     static const struct option longopts[] = {
         { "input",         required_argument, NULL, 'i' },
@@ -487,6 +513,7 @@ int main(int argc, char **argv)
         { "url-prefix",    required_argument, NULL, 'u' },
         { "num-segments",  required_argument, NULL, 'n' },
         { "base-time",     required_argument, NULL, 'b' },
+        { "speed",         required_argument, NULL, 's' },
         { "help",          no_argument,       NULL, 'h' },
         { 0, 0, 0, 0 }
     };
@@ -498,6 +525,7 @@ int main(int argc, char **argv)
     options.segment_duration = 10;
     options.num_segments = 0;
     options.base_time = 0;
+    options.speed = 1;
 
     do {
         opt = getopt_long(argc, argv, optstring, longopts, &longindex );
@@ -547,6 +575,10 @@ int main(int argc, char **argv)
                     options.base_time = 0;
                 }
                 first_segment = 0;
+                break;
+            case 's':
+                options.speed = strtol(optarg, &endptr, 10);
+                options.speed = options.speed > 0 ? options.speed : 1;
                 break;
             case 'h':
                 display_usage();
