@@ -537,6 +537,7 @@ int main(int argc, char **argv)
     options.num_segments = 0;
     options.base_time = 0;
     options.speed = 1;
+    options.url_prefix = "";
 
     do {
         opt = getopt_long(argc, argv, optstring, longopts, &longindex );
